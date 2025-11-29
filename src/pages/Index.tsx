@@ -3,18 +3,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { saveContact, getContacts } from "../supabase";
+import { saveContact, getContacts, Contact } from "@/lib/contacts";
 
-interface Contact {
-  id: string;
-  fullName: string;
-  email: string;
-  phoneNumber: string;
-  notes: string;
-}
+// Contact type imported from contacts utility
 
 const Index = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -23,25 +20,29 @@ const Index = () => {
   });
 
   useEffect(() => {
-    async function loadData() {
-      const { data } = await getContacts();
-      setContacts(data);
-    }
-    loadData();
+    const load = async () => {
+      setLoading(true);
+      const { contacts: loaded, error } = await getContacts();
+      if (error) setError(error);
+      setContacts(loaded);
+      setLoading(false);
+    };
+    load();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await saveContact(formData);
-    const { data } = await getContacts();
-    setContacts(data);
-
-    setFormData({
-      fullName: "",
-      email: "",
-      phoneNumber: "",
-      notes: "",
-    });
+    setSaving(true);
+    setError(null);
+    const { contact, error: saveErr } = await saveContact(formData);
+    if (saveErr) {
+      setError(saveErr);
+      setSaving(false);
+      return;
+    }
+    if (contact) setContacts((prev) => [contact, ...prev]);
+    setFormData({ fullName: "", email: "", phoneNumber: "", notes: "" });
+    setSaving(false);
   };
 
   return (
@@ -86,9 +87,10 @@ const Index = () => {
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 />
               </div>
-              <Button type="submit" className="w-full">
-                Save Contact
+              <Button type="submit" className="w-full" disabled={saving}>
+                {saving ? "Saving..." : "Save Contact"}
               </Button>
+              {error && <p className="text-sm text-red-500">{error}</p>}
             </form>
           </CardContent>
         </Card>
@@ -97,7 +99,9 @@ const Index = () => {
             <CardTitle className="text-xl">Saved Contacts</CardTitle>
           </CardHeader>
           <CardContent>
-            {contacts.length === 0 ? (
+            {loading ? (
+              <p className="text-muted-foreground">Loading contacts...</p>
+            ) : contacts.length === 0 ? (
               <p className="text-muted-foreground">No contacts saved yet.</p>
             ) : (
               <div className="space-y-4">
